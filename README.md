@@ -7,7 +7,7 @@ O QUE FAZER:
 - criar a struct processos e fila
 - ler o txt e criar um vetor de processos com base na leitura
 - ordenar o vetor por tempo de entrada pra n dar B.O dps
-- criar as seguintes filas: 4 filas representando 4 núcleos de CPU, uma fila de E/S, uma fila de terminados
+- criar as seguintes filas: 4 (2) filas representando 4 (2) núcleos de CPU, uma fila de E/S, uma fila de terminados
 - entrar num loop while. a condição de parada é a fila de terminados ter como tamnaho a quantidade de processos lidos do txt (ent precisa de uma variável contando a quantidade de processos lidos do txt)
 - a cada ciclo:
     - 1 Thread vai ficar responsável por tirar um processo do vetor e jogar numa fila de CPU (se der o tempo)
