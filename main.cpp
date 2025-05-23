@@ -23,7 +23,7 @@ struct Processo {
 };
 
 int main() {
-
+    Processo p1;
 
     return 0;
 }
