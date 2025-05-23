@@ -3,8 +3,7 @@
 
 
 using namespace std;
-class Processo {
-public:
+struct Processo {
     int id;                 //
     int tempoChegada;       // Quando chega no sistema
     int exec1;              // Duração do primeiro trecho de CPU
@@ -21,15 +20,8 @@ public:
     int tempoDeInicioExecucao = -1;
     int tempoFinalizacao = -1;
     int trocasDeContexto = 0;
-
-    Processo(int  id_, int chegada, int e1, bool bloqueia, int espera, int e2)
-       : id(id_), tempoChegada(chegada), exec1(e1),
-         temBloqueio(bloqueia), tempoEsperaIO(espera), exec2(e2)
-    {
-        tempoRestante = exec1 + (bloqueia ? e2 : 0);
-    }
-
 };
+
 int main() {
 
 
