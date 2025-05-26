@@ -1,36 +1,39 @@
 #include <iostream>
 #include <fstream>
 #include <queue>
+#include <vector>
+#include <string>
 #include <sstream>
 
-
 using namespace std;
+
 struct Processo {
-    int id;                 //
-    int tempoChegada;       // Quando chega no sistema
-    int exec1;              // Duração do primeiro trecho de CPU
-    bool temBloqueio;       // true se houver bloqueio após exec1
-    int tempoEsperaIO;      // Duração do bloqueio (espera)
-    int exec2;              // Duração da execução após retorno
+    int id;
+    int tempoChegada;
+    int exec1;
+    bool temBloqueio;
+    int tempoEsperaIO;
+    int exec2;
 
-
-    // Campos auxiliares
-    int tempoRestante;
-    int quantumRestante = 0;
-    int estado = 0;
-    int tempoBloqueado = 0;
-    int tempoDeInicioExecucao = -1;
+    // Controle da simulação
+    int tempoRestante;       // total restante do trecho atual
+    int quantumRestante;
+    int estado;              // 0 = exec1, 1 = bloqueio, 2 = exec2, 3 = terminado
+    int tempoBloqueado;
+    int tempoInicioExecucao = -1;
     int tempoFinalizacao = -1;
     int trocasDeContexto = 0;
-};
 
+    int tempoEsperaTotal = 0;
+    int ultimoTempoExecutado = -1;
+};
 
 vector<Processo> lerProcessosDoArquivo(const string& nomeArquivo) {
     ifstream arquivo(nomeArquivo);
     vector<Processo> processos;
 
     if (!arquivo.is_open()) {
-        cerr << "Erro ao abrir o arquivo: " << nomeArquivo << endl;
+        cerr << "Erro ao abrir arquivo: " << nomeArquivo << endl;
         return processos;
     }
 
@@ -39,73 +42,159 @@ vector<Processo> lerProcessosDoArquivo(const string& nomeArquivo) {
         stringstream ss(linha);
         Processo p;
         int bloqueioInt;
-
-        // Lê os valores na ordem
         if (ss >> p.id >> p.tempoChegada >> p.exec1 >> bloqueioInt >> p.tempoEsperaIO >> p.exec2) {
-            p.temBloqueio = (bloqueioInt != 0);  // Converte int para bool
+            p.temBloqueio = (bloqueioInt != 0);
+            p.estado = 0;
+            p.tempoRestante = p.exec1;
+            p.quantumRestante = 0;
+            p.tempoBloqueado = 0;
+            p.trocasDeContexto = 0;
+            p.tempoEsperaTotal = 0;
             processos.push_back(p);
-        } else {
-            cerr << "Linha mal formatada: " << linha << std::endl;
         }
     }
-
     return processos;
 }
 
-void distribuirProcessos(const vector<Processo>& processos,
-                         queue<Processo>& prontos,
-                         queue<Processo>& aguardandoChegada) {
-    for (const Processo& p : processos) {
-        if (p.tempoChegada == 0) {
+const int QUANTUM_FIXO = 4;
+const int NUM_NUCLEOS = 2;
+
+void atualizarChegadas(queue<Processo>& aguardandoChegada, queue<Processo>& prontos, int tempo_global) {
+    queue<Processo> temp;
+    while (!aguardandoChegada.empty()) {
+        Processo p = aguardandoChegada.front();
+        aguardandoChegada.pop();
+        if (p.tempoChegada <= tempo_global) {
+            p.quantumRestante = QUANTUM_FIXO;
             prontos.push(p);
         } else {
-            aguardandoChegada.push(p);
+            temp.push(p);
         }
     }
+    aguardandoChegada = temp;
 }
-void imprimirFila(const std::string& nome, std::queue<Processo> fila) {
-    std::cout << "\n== " << nome << " ==\n";
 
-    if (fila.empty()) {
-        std::cout << "(vazia)\n";
-        return;
+void imprimirEstado(int tempo_global, const queue<Processo>& prontos,
+                    const queue<Processo>& bloqueados, Processo* executando[]) {
+    cout << "Tempo: " << tempo_global << "\nProntos: ";
+    queue<Processo> temp = prontos;
+    while (!temp.empty()) {
+        cout << temp.front().id << " ";
+        temp.pop();
     }
-
-    while (!fila.empty()) {
-        const Processo& p = fila.front();
-        std::cout << "ID: " << p.id
-                  << " Chegada: " << p.tempoChegada
-                  << " Exec1: " << p.exec1
-                  << " Bloqueio: " << (p.temBloqueio ? "Sim" : "Nao")
-                  << " EsperaIO: " << p.tempoEsperaIO
-                  << " Exec2: " << p.exec2
-                  << std::endl;
-        fila.pop();
+    cout << "\nBloqueados: ";
+    temp = bloqueados;
+    while (!temp.empty()) {
+        cout << temp.front().id << " ";
+        temp.pop();
     }
+    cout << "\nExecutando: ";
+    for (int i = 0; i < NUM_NUCLEOS; i++) {
+        if (executando[i]) cout << "(Nucleo " << i << ") P" << executando[i]->id << " ";
+        else cout << "(Nucleo " << i << ") - ";
+    }
+    cout << "\n\n";
 }
 
 int main() {
-    int quantum = 10;
     int tempo_global = 0;
-    queue<Processo> prontos;
+    vector<Processo> processos = lerProcessosDoArquivo("processos.txt");
+
     queue<Processo> aguardandoChegada;
+    queue<Processo> prontos;
     queue<Processo> bloqueados;
     queue<Processo> terminados;
-    string nomeArquivo = "processos.txt";
-    vector<Processo> processos = lerProcessosDoArquivo(nomeArquivo);
-    distribuirProcessos(processos, prontos, aguardandoChegada);
-    imprimirFila("Fila de Prontos", prontos);
-    imprimirFila("Fila de Aguardando Chegada", aguardandoChegada);
-    imprimirFila("Fila de Bloqueados", bloqueados);
-    imprimirFila("Fila de Terminados", terminados);
 
-  /*  while (!prontos.empty() || !aguardandoChegada.empty() || !bloqueados.empty()) {
-        // Atualiza estado dos aguardandoChegada
-        // Executa processo em CPU (Round Robin)
-        // Verifica se algum processo termina ou bloqueia
-        // Atualiza tempo de bloqueio
-        // tempo++;
-    } */
+    // Inicialmente todos na fila aguardando
+    for (auto& p : processos) {
+        aguardandoChegada.push(p);
+    }
+
+    Processo* executando[NUM_NUCLEOS] = {nullptr};
+
+    while (true) {
+        atualizarChegadas(aguardandoChegada, prontos, tempo_global);
+
+        // Atualiza bloqueados
+        int bloqueadosSize = (int)bloqueados.size();
+        for (int i = 0; i < bloqueadosSize; i++) {
+            Processo p = bloqueados.front();
+            bloqueados.pop();
+            p.tempoBloqueado--;
+            if (p.tempoBloqueado <= 0) {
+                p.estado = 2; // vai para exec2
+                p.tempoRestante = p.exec2;
+                p.quantumRestante = QUANTUM_FIXO;
+                prontos.push(p);
+            } else {
+                bloqueados.push(p);
+            }
+        }
+
+        // Atualiza núcleos
+        for (int i = 0; i < NUM_NUCLEOS; i++) {
+            Processo* p = executando[i];
+            if (p == nullptr) {
+                if (!prontos.empty()) {
+                    Processo novo = prontos.front();
+                    prontos.pop();
+                    novo.trocasDeContexto++;
+                    if (novo.tempoInicioExecucao == -1) novo.tempoInicioExecucao = tempo_global;
+                    novo.quantumRestante = QUANTUM_FIXO;
+                    executando[i] = new Processo(novo); // aloca nova cópia para execução
+                }
+            } else {
+                // Executa 1 unidade de tempo
+                p->tempoRestante--;
+                p->quantumRestante--;
+                // Incrementa espera para processos prontos (não executando)
+                // (Pode fazer fora do loop principal)
+                // Se terminar o trecho atual
+                if (p->tempoRestante <= 0) {
+                    if (p->estado == 0 && p->temBloqueio) {
+                        // Vai para bloqueio
+                        p->estado = 1;
+                        p->tempoBloqueado = p->tempoEsperaIO;
+                        bloqueados.push(*p);
+                        delete executando[i];
+                        executando[i] = nullptr;
+                    } else if (p->estado == 2 || (p->estado == 0 && !p->temBloqueio)) {
+                        // Processo terminou
+                        p->estado = 3;
+                        p->tempoFinalizacao = tempo_global + 1;
+                        terminados.push(*p);
+                        delete executando[i];
+                        executando[i] = nullptr;
+                    } else if (p->estado == 1) {
+                        // Se estivesse bloqueado (não deve ocorrer aqui)
+                    }
+                } else if (p->quantumRestante <= 0) {
+                    // Quantum acabou, troca processo
+                    prontos.push(*p);
+                    delete executando[i];
+                    executando[i] = nullptr;
+                }
+            }
+        }
+
+        // Incrementa tempo_global
+        tempo_global++;
+
+        imprimirEstado(tempo_global, prontos, bloqueados, executando);
+
+        // Condição de parada: tudo terminado?
+        if (aguardandoChegada.empty() && prontos.empty() && bloqueados.empty()) {
+            bool nucleoVazio = true;
+            for (int i = 0; i < NUM_NUCLEOS; i++) {
+                if (executando[i] != nullptr) nucleoVazio = false;
+            }
+            if (nucleoVazio) break;
+        }
+    }
+
+    // Aqui pode calcular as métricas e imprimir resultados finais
+
+    cout << "Simulacao finalizada em tempo: " << tempo_global << "\n";
 
     return 0;
 }
